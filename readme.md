@@ -2,6 +2,30 @@
 
 This mini competition is adapted from the Kaggle Rossman challenge.  Please refrain from looking at the challenge on Kaggle until after you have finished - this will allow you to get a true measurement of where you are at as a data scientist.
 
+## to run this file in test
+
+
+Ensure that you have you have, test.csv,train.csv and store.csv in your data folder. If you do not have params.txt you need to 
+
+
+```bash
+#install requirements
+pip install requirements.txt
+
+
+#  to run test data
+python predict.py
+
+#  to run model train / bayesian selection
+python train.py
+
+#  at test time run
+python data.py --test 1
+```
+
+
+
+
 ## Setup
 
 ```bash
