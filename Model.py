@@ -1,4 +1,3 @@
-
 #%% 0. Housekeeping
 
 # =============================================================================
@@ -268,147 +267,20 @@ if __name__ == '__main__':
     #expanded['SalesPerCustomer']=expanded['Sales']/expanded['Customers']
 
     df.set_index('Date', inplace=True)
+    df_test=df.copy()
     print(df.shape)
 
-
-
-    ######
-    import pandas as pd
-    import numpy as np
-
-    import matplotlib.pyplot as plt
-    import xgboost as xgb
-    from xgboost import plot_importance
-    from sklearn.metrics import mean_squared_error
-    from sklearn.model_selection import train_test_split as train_test_split
-    pd.set_option('display.max_rows', 500)
-    pd.set_option('display.max_columns', 500)
-    pd.set_option('display.width', 1000)
-    import warnings
-    warnings.filterwarnings("ignore", category=FutureWarning)
+    ################################## create features on test data
     
-    import datetime
-    from bayes_opt import BayesianOptimization
-
-
-
-    cols = list(df.columns.values) #Make a list of all of the columns in the df
-    cols.pop(cols.index('Sales')) #Remove sales from list
-    df = df[cols + ['Sales']] #Create new dataframe with sales right at the end
-    X, y = df.iloc[:, :-1],df.iloc[:, -1]
-    df=df[['av_SalesPerCustomer','av_SalesPerCustomer_dayofweek',
-                               'av_SalesPerCustomer_dayofmonth','Customers',
-           'Promo','Promo2','CompetitionDistance','dayofweek','Decay','comp_open_since','Sales']]
-
-    date_range_days=(df.index.max() - df.index.min()).days
-    split_date=df.index.min() + timedelta(date_range_days*0.8) #train set 80% of full population
-    #randomly creating train and test subsets. may need to refine this
-    df_early,df_later = df.loc[df.index <= split_date], df.loc[df.index > split_date]
-    #create feature matrix of everything up to sales, create labels from sales
-    X_train, X_test, y_train, y_test = df_early.iloc[:,:-1], df_later.iloc[:,:-1], df_early.iloc[:,-1], df_later.iloc[:,-1]
-
-
-
-    # creating XGB optimised data structure. we will need this for our cross validation model later
-    df_DM = xgb.DMatrix(data=X, label=y)
-
-    #here we decide the parameters that we are going to use in the model
-    params = {"objective":"reg:squarederror", #type of regressor, shouldnt change
-              'colsample_bytree': 0.627, #percentage of features used per tree. High value can lead to overfitting.
-              'learning_rate': 0.1, #step size shrinkage used to prevent overfitting. Range is [0,1]
-              'max_depth': 5, #determines how deeply each tree is allowed to grow during any boosting round. keep this low! this will blow up our variance if high
-              'lambda': 4.655, #L1 regularization on leaf weights. A large valupythone leads to more regularization. Could consider l2 euclidiean regularisation
-              'n_estimators': 1250, #number of trees you want to build.
-              'n_jobs': 4,#should optimise core usage on pc
-             'subsample':0.86}
-
-    #now we must instantiate the XGB regressor by calling XGB regressor CLASS from the XGBoost library, we must give it the hypter parameters as arguments
-    xg_reg = xgb.XGBRegressor(**params)
-    #Fit the regressor to the training set and make predictions for the test set using .fit() and .predict() methods
-    xg_reg.fit(X_train, y_train)
-    preds = xg_reg.predict(X_test)
-    preds_train = xg_reg.predict(X_train)
-
-    EPSILON = 1e-10
-    def _error(actual: np.ndarray, predicted: np.ndarray):
-        """ Simple error """
-        return actual - predicted
-    def _percentage_error(actual: np.ndarray, predicted: np.ndarray):
-        """
-        Percentage error
-        Note: result is NOT multiplied by 100
-        """
-        return _error(actual, predicted) / (actual + EPSILON)
-
-    def rmspe(actual: np.ndarray, predicted: np.ndarray):
-
-        return np.sqrt(np.mean(np.square(_percentage_error(actual, predicted))))
-
-    #now we must instantiate the XGB regressor by calling XGB regressor CLASS from the XGBoost library, we must give it the hypter parameters as arguments
-    xg_reg = xgb.XGBRegressor(**params)
-
-    #Fit the regressor to the training set and make predictions for the test set using .fit() and .predict() methods
-    xg_reg.fit(X_train, y_train)
-    test_preds = xg_reg.predict(X_test)
-    train_preds = xg_reg.predict(X_train)
-    #print("RMSE train: %f" % np.sqrt(mean_squared_error(y_train, train_preds)))
-    #print("RMSE test: %f" % np.sqrt(mean_squared_error(y_test, test_preds)))
-
-    #print("RMSPE (test): %f" % (rmspe(y_test,preds)*100) +'%')
-    #print("RMSPE (train): %f" % (rmspe(y_train,preds_train)*100) +'%')
-    #print(np.sqrt(mean_squared_error(y_test, preds)))
-    #logger.append(X_train.columns)
-    #logger.append(rmspe(y_test,preds)*100)
-
-     #bayesian optimisation of hyper parameters
-    def xgb_evaluate(max_depth, lambd, colsample_bytree,subsample):
-        params1 = {'objective': 'reg:squarederror',
-                  'max_depth': int(max_depth),
-                  'learning_rate': 0.1,
-                  'lambda': lambd,
-                   'subsample': subsample,
-                  'colsample_bytree': colsample_bytree,
-                  'n_jobs': 4}
-        # Used around 1000 boosting rounds in the full model
-        cv_result = xgb.cv(dtrain=df_DM, params=params1, num_boost_round=125, nfold=3,metrics='rmse',seed=42)    
-
-        # Bayesian optimization only knows how to maximize, not minimize, so return the negative RMSE
-        return -1.0 * cv_result['test-rmse-mean'].iloc[-1]
-
-    xgb_bo = BayesianOptimization(xgb_evaluate, {'max_depth': (3, 5), 
-                                                 'lambd': (2, 6),
-                                                 'colsample_bytree': (0.3, 0.8),
-                                                'subsample': (0.8,1)})
-    # Use the expected improvement acquisition function to handle negative numbers
-    # Optimally needs quite a few more initiation points and number of iterations
-    xgb_bo.maximize(init_points=10, n_iter=3, acq='ei')
-    #extract best parameters from model
-    params1 = xgb_bo.max['params']
-    print (params1)
-    #Converting the max_depth and from float to int
-    params1['max_depth']= int(params1['max_depth'])
-    
-    xg_reg2 = xgb.XGBRegressor(**params1,n_estimators=500)
-    xg_reg2.fit(X_train, y_train)
-    train_preds1 = xg_reg2.predict(X_train)
-    test_preds1 = xg_reg2.predict(X_test)
-    print("RMSE train: %f" % np.sqrt(mean_squared_error(y_train, train_preds1)))
-    print("RMSE CV: %f" % np.sqrt(mean_squared_error(y_test, test_preds1)))
-    print("RMSPE (CV): %f" % (rmspe(y_test,test_preds1)*100) +'%')
-    print("RMSPE (train): %f" % (rmspe(y_train,train_preds1)*100) +'%')
- 
-
-    
-    ######end of model 
-
+    import datetime as dt
+    from datetime import datetime
     test = pd.read_csv('data/test.csv', low_memory=False)
     store = pd.read_csv('data/store.csv', low_memory=False)
         
-    y_final_test=test['Sales']
-    test.drop(columns=['Sales'])
     
-    print(y_final_test)
-    print(test.shape)
+    
+    
+  
     
     #%% 1. Merging store to train data
 
@@ -586,8 +458,7 @@ if __name__ == '__main__':
 
     expanded_promo.loc[:,'Decay'] = np.exp(- 0.05 * minimum_distance)
 
-    expanded_promo=expanded_promo[['Date', 'Store', 'DayOfWeek', 'Open', 'Promo','StateHoliday', 'SchoolHoliday', 'StoreType', 'Assortment','CompetitionDistance', 'CompetitionOpened', 'Promo2', 'Promo2SinceWeek',
-           'Promo2SinceYear', 'Promo2GoingOn', 'comp_open_since', 'DaysFromPromotion','Decay']]
+    expanded_promo=expanded_promo[['Date', 'Store','Customers', 'DayOfWeek', 'Open', 'Promo','StateHoliday', 'SchoolHoliday', 'StoreType', 'Assortment','CompetitionDistance', 'CompetitionOpened', 'Promo2', 'Promo2SinceWeek','Promo2SinceYear', 'Promo2GoingOn', 'comp_open_since','Sales', 'DaysFromPromotion','Decay']]
     expanded=expanded_promo.copy()
     expanded_promo.info()
 
@@ -621,7 +492,9 @@ if __name__ == '__main__':
     expanded['weekofyear'] = expanded['Date'].dt.weekofyear
 
     expanded.dropna(axis = 0, how ='any',inplace=True)
-
+    expanded=expanded[expanded['Sales'] >0 ]
+    
+    
     print(expanded.shape)
 
     #%% Rachel - Merge on relevant variables
@@ -630,9 +503,9 @@ if __name__ == '__main__':
     # Extracting relevant variables with the relevant merge key variables
     # =============================================================================
 
-    SalesPerCustomer_df = df.loc[:,['av_SalesPerCustomer','Store']].drop_duplicates()
-    SalesPerCustomer_dayW  = df.loc[:,['av_SalesPerCustomer_dayofweek','Store','dayofweek']].drop_duplicates()
-    SalesPerCustomer_dayM = df.loc[:,['av_SalesPerCustomer_dayofmonth','Store','dayofmonth']].drop_duplicates()
+    SalesPerCustomer_df = df_test.loc[:,['av_SalesPerCustomer','Store']].drop_duplicates()
+    SalesPerCustomer_dayW  = df_test.loc[:,['av_SalesPerCustomer_dayofweek','Store','dayofweek']].drop_duplicates()
+    SalesPerCustomer_dayM = df_test.loc[:,['av_SalesPerCustomer_dayofmonth','Store','dayofmonth']].drop_duplicates()
 
     # =============================================================================
     # Merging the relevant variables to the main dataset
@@ -642,11 +515,166 @@ if __name__ == '__main__':
     test_merge = pd.merge(test_merge, SalesPerCustomer_dayW, on=['Store','dayofweek'], validate='many_to_one')
     test_merge = pd.merge(test_merge, SalesPerCustomer_dayM, on=['Store','dayofmonth'], validate='many_to_one')
 
-    test_merge.columns
-
-    X_final_test=test_merge.copy()
-
-    #####calculate test statistics
-    final_test_preds = xg_reg.predict(X_final_test)
-    print("RMSPE (test): %f" % (rmspe(y_final_test,final_test_preds)*100) +'%')
+    y_final_test=test_merge['Sales']
     
+    #######train
+    
+      
+    import Data_Create
+    import pandas as pd
+    import numpy as np
+
+    import matplotlib.pyplot as plt
+    import xgboost as xgb
+    from xgboost import plot_importance
+    from sklearn.metrics import mean_squared_error
+    from sklearn.model_selection import train_test_split as train_test_split
+    pd.set_option('display.max_rows', 500)
+    pd.set_option('display.max_columns', 500)
+    pd.set_option('display.width', 1000)
+    import warnings
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    
+    import datetime as dt
+    from datetime import datetime
+    from bayes_opt import BayesianOptimization
+
+
+
+    cols = list(df.columns.values) #Make a list of all of the columns in the df
+    cols.pop(cols.index('Sales')) #Remove sales from list
+    df = df[cols + ['Sales']] #Create new dataframe with sales right at the end
+    X, y = df.iloc[:, :-1],df.iloc[:, -1]
+    df=df[['av_SalesPerCustomer','av_SalesPerCustomer_dayofweek',
+                               'av_SalesPerCustomer_dayofmonth','Customers',
+           'Promo','Promo2','CompetitionDistance','dayofweek','Decay','comp_open_since','Sales']]
+
+    date_range_days=(df.index.max() - df.index.min()).days
+    split_date=df.index.min() + timedelta(date_range_days*0.8) #train set 80% of full population
+    #randomly creating train and test subsets. may need to refine this
+    df_early,df_later = df.loc[df.index <= split_date], df.loc[df.index > split_date]
+    #create feature matrix of everything up to sales, create labels from sales
+    X_train, X_test, y_train, y_test = df_early.iloc[:,:-1], df_later.iloc[:,:-1], df_early.iloc[:,-1], df_later.iloc[:,-1]
+
+
+
+    # creating XGB optimised data structure. we will need this for our cross validation model later
+    df_DM = xgb.DMatrix(data=X, label=y)
+
+    #here we decide the parameters that we are going to use in the model
+    params = {"objective":"reg:squarederror", #type of regressor, shouldnt change
+              'colsample_bytree': 0.627, #percentage of features used per tree. High value can lead to overfitting.
+              'learning_rate': 0.1, #step size shrinkage used to prevent overfitting. Range is [0,1]
+              'max_depth': 5, #determines how deeply each tree is allowed to grow during any boosting round. keep this low! this will blow up our variance if high
+              'lambda': 4.655, #L1 regularization on leaf weights. A large valupythone leads to more regularization. Could consider l2 euclidiean regularisation
+              'n_estimators': 1250, #number of trees you want to build.
+              'n_jobs': 4,#should optimise core usage on pc
+             'subsample':0.86}
+
+    #now we must instantiate the XGB regressor by calling XGB regressor CLASS from the XGBoost library, we must give it the hypter parameters as arguments
+    xg_reg = xgb.XGBRegressor(**params)
+    #Fit the regressor to the training set and make predictions for the test set using .fit() and .predict() methods
+    xg_reg.fit(X_train, y_train)
+    preds = xg_reg.predict(X_test)
+    preds_train = xg_reg.predict(X_train)
+
+    EPSILON = 1e-10
+    def _error(actual: np.ndarray, predicted: np.ndarray):
+        """ Simple error """
+        return actual - predicted
+    def _percentage_error(actual: np.ndarray, predicted: np.ndarray):
+        """
+        Percentage error
+        Note: result is NOT multiplied by 100
+        """
+        return _error(actual, predicted) / (actual + EPSILON)
+
+    def rmspe(actual: np.ndarray, predicted: np.ndarray):
+
+        return np.sqrt(np.mean(np.square(_percentage_error(actual, predicted))))
+
+    #now we must instantiate the XGB regressor by calling XGB regressor CLASS from the XGBoost library, we must give it the hypter parameters as arguments
+    xg_reg = xgb.XGBRegressor(**params)
+
+    #Fit the regressor to the training set and make predictions for the test set using .fit() and .predict() methods
+    xg_reg.fit(X_train, y_train)
+    test_preds = xg_reg.predict(X_test)
+    train_preds = xg_reg.predict(X_train)
+    #print("RMSE train: %f" % np.sqrt(mean_squared_error(y_train, train_preds)))
+    #print("RMSE test: %f" % np.sqrt(mean_squared_error(y_test, test_preds)))
+
+    #print("RMSPE (test): %f" % (rmspe(y_test,preds)*100) +'%')
+    #print("RMSPE (train): %f" % (rmspe(y_train,preds_train)*100) +'%')
+    #print(np.sqrt(mean_squared_error(y_test, preds)))
+    #logger.append(X_train.columns)
+    #logger.append(rmspe(y_test,preds)*100)
+
+     #bayesian optimisation of hyper parameters
+    def xgb_evaluate(max_depth, lambd, colsample_bytree,subsample):
+        params1 = {'objective': 'reg:squarederror',
+                  'max_depth': int(max_depth),
+                  'learning_rate': 0.1,
+                  'lambda': lambd,
+                   'subsample': subsample,
+                  'colsample_bytree': colsample_bytree,
+                  'n_jobs': 4}
+        # Used around 1000 boosting rounds in the full model
+        cv_result = xgb.cv(dtrain=df_DM, params=params1, num_boost_round=125, nfold=3,metrics='rmse',seed=42)    
+
+        # Bayesian optimization only knows how to maximize, not minimize, so return the negative RMSE
+        return -1.0 * cv_result['test-rmse-mean'].iloc[-1]
+
+    xgb_bo = BayesianOptimization(xgb_evaluate, {'max_depth': (3, 5), 
+                                                 'lambd': (2, 6),
+                                                 'colsample_bytree': (0.3, 0.8),
+                                                'subsample': (0.8,1)})
+    # Use the expected improvement acquisition function to handle negative numbers
+    # Optimally needs quite a few more initiation points and number of iterations
+    xgb_bo.maximize(init_points=10, n_iter=3, acq='ei')
+    #extract best parameters from model
+    params1 = xgb_bo.max['params']
+    print (params1)
+    #Converting the max_depth and from float to int
+    params1['max_depth']= int(params1['max_depth'])
+    
+    xg_reg2 = xgb.XGBRegressor(**params1,n_estimators=500)
+    xg_reg2.fit(X_train, y_train)
+    train_preds1 = xg_reg2.predict(X_train)
+    test_preds1 = xg_reg2.predict(X_test)
+    print("RMSE train: %f" % np.sqrt(mean_squared_error(y_train, train_preds1)))
+    print("RMSE CV: %f" % np.sqrt(mean_squared_error(y_test, test_preds1)))
+    print("RMSPE (CV): %f" % (rmspe(y_test,test_preds1)*100) +'%')
+    print("RMSPE (train): %f" % (rmspe(y_train,train_preds1)*100) +'%')
+ 
+    #####predict
+    
+    import Data_Create
+    
+test_columns=['av_SalesPerCustomer','av_SalesPerCustomer_dayofweek',
+                               'av_SalesPerCustomer_dayofmonth','Customers',
+           'Promo','Promo2','CompetitionDistance','dayofweek','Decay','comp_open_since']
+test_merge=test_merge[test_columns]
+X_final_test=test_merge.copy()
+
+    
+#params1=pd.read_csv('data/params.csv')
+xg_reg2 = xgb.XGBRegressor(**params1,n_estimators=500)
+X_final_test=test_merge.copy()
+    #####calculate test statistics
+    
+    
+EPSILON = 1e-10
+def _error(actual: np.ndarray, predicted: np.ndarray):
+    """ Simple error """
+    return actual - predicted
+def _percentage_error(actual: np.ndarray, predicted: np.ndarray):
+
+    return _error(actual, predicted) / (actual + EPSILON)
+
+def rmspe(actual: np.ndarray, predicted: np.ndarray):
+
+    return np.sqrt(np.mean(np.square(_percentage_error(actual, predicted))))
+    
+final_test_preds = xg_reg.predict(X_final_test)
+print("RMSPE (test): %f" % (rmspe(y_final_test,final_test_preds)*100) +'%')
+print("RMSPE (test): %f" % (rmspe(y_final_test,final_test_preds)*100) +'%')    
