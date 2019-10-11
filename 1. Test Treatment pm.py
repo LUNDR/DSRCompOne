@@ -20,7 +20,6 @@ store = pd.read_csv('data/store.csv', low_memory=False)
 # 1.1 Since data has to have the same size as 'train', a container is created
 # =============================================================================
 
-# Creating dataframe
 expanded_store = test
 
 # =============================================================================
@@ -191,7 +190,7 @@ expanded_promo.loc[:,'DaysFromPromotion'] = minimum_distance
 expanded_promo.loc[:,'Decay'] = np.exp(- 0.05 * minimum_distance)
 
 expanded_promo=expanded_promo[['Date', 'Store', 'DayOfWeek', 'Open', 'Promo','StateHoliday', 'SchoolHoliday', 'StoreType', 'Assortment','CompetitionDistance', 'CompetitionOpened', 'Promo2', 'Promo2SinceWeek',
-       'Promo2SinceYear', 'Promo2GoingOn', 'comp_open_since', 'DaysFromPromotion','Decay']]
+       'Promo2SinceYear', 'Promo2GoingOn', 'comp_open_since', 'DaysFromPromotion','Decay','Sales']]
 expanded=expanded_promo.copy()
 expanded_promo.info()
 
