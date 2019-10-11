@@ -288,7 +288,7 @@ if __name__ == '__main__':
     warnings.filterwarnings("ignore", category=FutureWarning)
     from datetime import timedelta
     import datetime
-    #from bayes_opt import BayesianOptimization
+    from bayes_opt import BayesianOptimization
 
 
 
@@ -298,7 +298,7 @@ if __name__ == '__main__':
     X, y = df.iloc[:, :-1],df.iloc[:, -1]
     df=df[['av_SalesPerCustomer','av_SalesPerCustomer_dayofweek',
                                'av_SalesPerCustomer_dayofmonth','Customers',
-           'Promo','Promo2','CompetitionDistance','dayofyear','dayofweek','Decay','comp_open_since','Sales']]
+           'Promo','Promo2','CompetitionDistance','dayofweek','Decay','comp_open_since','Sales']]
 
     date_range_days=(df.index.max() - df.index.min()).days
     split_date=df.index.min() + timedelta(date_range_days*0.8) #train set 80% of full population
@@ -359,3 +359,41 @@ if __name__ == '__main__':
     print(np.sqrt(mean_squared_error(y_test, preds)))
     #logger.append(X_train.columns)
     #logger.append(rmspe(y_test,preds)*100)
+
+     #bayesian optimisation of hyper parameters
+    def xgb_evaluate(max_depth, lambd, colsample_bytree,subsample):
+        params1 = {'objective': 'reg:squarederror',
+                  'max_depth': int(max_depth),
+                  'learning_rate': 0.1,
+                  'lambda': lambd,
+                   'subsample': subsample,
+                  'colsample_bytree': colsample_bytree,
+                  'n_jobs': 4}
+        # Used around 1000 boosting rounds in the full model
+        cv_result = xgb.cv(dtrain=df_DM, params=params1, num_boost_round=125, nfold=3,metrics='rmse',seed=42)    
+
+        # Bayesian optimization only knows how to maximize, not minimize, so return the negative RMSE
+        return -1.0 * cv_result['test-rmse-mean'].iloc[-1]
+
+    xgb_bo = BayesianOptimization(xgb_evaluate, {'max_depth': (3, 5), 
+                                                 'lambd': (2, 6),
+                                                 'colsample_bytree': (0.3, 0.8),
+                                                'subsample': (0.8,1)})
+    # Use the expected improvement acquisition function to handle negative numbers
+    # Optimally needs quite a few more initiation points and number of iterations
+    xgb_bo.maximize(init_points=10, n_iter=3, acq='ei')
+    #extract best parameters from model
+    params1 = xgb_bo.max['params']
+    print (params1)
+    #Converting the max_depth and from float to int
+    params1['max_depth']= int(params1['max_depth'])
+    
+    xg_reg2 = xgb.XGBRegressor(**params1,n_estimators=500)
+    xg_reg2.fit(X_train, y_train)
+    train_preds1 = xg_reg2.predict(X_train)
+    test_preds1 = xg_reg2.predict(X_test)
+    print("RMSE train: %f" % np.sqrt(mean_squared_error(y_train, train_preds1)))
+    print("RMSE test: %f" % np.sqrt(mean_squared_error(y_test, test_preds1)))
+    print("RMSPE (test): %f" % (rmspe(y_test,test_preds1)*100) +'%')
+    print("RMSPE (train): %f" % (rmspe(y_train,train_preds1)*100) +'%')
+    
