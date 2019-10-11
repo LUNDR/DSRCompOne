@@ -267,7 +267,7 @@ if __name__ == '__main__':
     #create sales per customer for each store and day
     #expanded['SalesPerCustomer']=expanded['Sales']/expanded['Customers']
 
-
+    df.set_index('Date', inplace=True)
     print(df.shape)
 
 
@@ -296,7 +296,9 @@ if __name__ == '__main__':
     cols.pop(cols.index('Sales')) #Remove sales from list
     df = df[cols + ['Sales']] #Create new dataframe with sales right at the end
     X, y = df.iloc[:, :-1],df.iloc[:, -1]
-    df=df[['av_SalesPerCustomer','av_SalesPerCustomer_dayofweek','av_SalesPerCustomer_dayofmonth','Customers','Promo','Promo2','CompetitionDistance','Sales','dayofyear','dayofweek','Decay','comp_open_since']]
+    df=df[['av_SalesPerCustomer','av_SalesPerCustomer_dayofweek',
+                               'av_SalesPerCustomer_dayofmonth','Customers',
+           'Promo','Promo2','CompetitionDistance','dayofyear','dayofweek','Decay','comp_open_since','Sales']]
 
     date_range_days=(df.index.max() - df.index.min()).days
     split_date=df.index.min() + timedelta(date_range_days*0.8) #train set 80% of full population
@@ -312,13 +314,35 @@ if __name__ == '__main__':
 
     #here we decide the parameters that we are going to use in the model
     params = {"objective":"reg:squarederror", #type of regressor, shouldnt change
-              'colsample_bytree': 0.9, #percentage of features used per tree. High value can lead to overfitting.
+              'colsample_bytree': 0.627, #percentage of features used per tree. High value can lead to overfitting.
               'learning_rate': 0.1, #step size shrinkage used to prevent overfitting. Range is [0,1]
-              'max_depth': 3, #determines how deeply each tree is allowed to grow during any boosting round. keep this low! this will blow up our variance if high
-              'lambda': 4, #L1 regularization on leaf weights. A large valupythone leads to more regularization. Could consider l2 euclidiean regularisation
-              'n_estimators': 500, #number of trees you want to build.
+              'max_depth': 5, #determines how deeply each tree is allowed to grow during any boosting round. keep this low! this will blow up our variance if high
+              'lambda': 4.655, #L1 regularization on leaf weights. A large valupythone leads to more regularization. Could consider l2 euclidiean regularisation
+              'n_estimators': 1250, #number of trees you want to build.
               'n_jobs': 4,#should optimise core usage on pc
-             'subsample':0.9}
+             'subsample':0.86}
+
+    #now we must instantiate the XGB regressor by calling XGB regressor CLASS from the XGBoost library, we must give it the hypter parameters as arguments
+    xg_reg = xgb.XGBRegressor(**params)
+    #Fit the regressor to the training set and make predictions for the test set using .fit() and .predict() methods
+    xg_reg.fit(X_train, y_train)
+    preds = xg_reg.predict(X_test)
+    preds_train = xg_reg.predict(X_train)
+
+    EPSILON = 1e-10
+    def _error(actual: np.ndarray, predicted: np.ndarray):
+        """ Simple error """
+        return actual - predicted
+    def _percentage_error(actual: np.ndarray, predicted: np.ndarray):
+        """
+        Percentage error
+        Note: result is NOT multiplied by 100
+        """
+        return _error(actual, predicted) / (actual + EPSILON)
+
+    def rmspe(actual: np.ndarray, predicted: np.ndarray):
+
+        return np.sqrt(np.mean(np.square(_percentage_error(actual, predicted))))
 
     #now we must instantiate the XGB regressor by calling XGB regressor CLASS from the XGBoost library, we must give it the hypter parameters as arguments
     xg_reg = xgb.XGBRegressor(**params)
@@ -329,3 +353,9 @@ if __name__ == '__main__':
     train_preds = xg_reg.predict(X_train)
     print("RMSE train: %f" % np.sqrt(mean_squared_error(y_train, train_preds)))
     print("RMSE test: %f" % np.sqrt(mean_squared_error(y_test, test_preds)))
+
+    print("RMSPE (test): %f" % (rmspe(y_test,preds)*100) +'%')
+    print("RMSPE (train): %f" % (rmspe(y_train,preds_train)*100) +'%')
+    print(np.sqrt(mean_squared_error(y_test, preds)))
+    #logger.append(X_train.columns)
+    #logger.append(rmspe(y_test,preds)*100)
