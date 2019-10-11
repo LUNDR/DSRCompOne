@@ -4,5 +4,5 @@ seaborn
 matplotlib
 datetime
 xgboost
-sklearn
+scikit-learn
 bayesian-optimization
