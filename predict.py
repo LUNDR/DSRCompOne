@@ -279,6 +279,27 @@ if __name__ == '__main__':
     df.set_index('Date', inplace=True)
     df_test=df.copy()
     print(df.shape)
+    
+    
+     ###### create train data (X_train, Y train) again, in order to train the model
+
+
+    cols = list(df.columns.values) #Make a list of all of the columns in the df
+    cols.pop(cols.index('Sales')) #Remove sales from list
+    df = df[cols + ['Sales']] #Create new dataframe with sales right at the end
+    X, y = df.iloc[:, :-1],df.iloc[:, -1]
+    df=df[['av_SalesPerCustomer','av_SalesPerCustomer_dayofweek',
+                               'av_SalesPerCustomer_dayofmonth','Customers',
+           'Promo','Promo2','CompetitionDistance','dayofweek','Decay','comp_open_since','Sales']]
+
+    date_range_days=(df.index.max() - df.index.min()).days
+    split_date=df.index.min() + timedelta(date_range_days*0.8) #train set 80% of full population
+    #randomly creating train and test subsets. may need to refine this
+    df_early,df_later = df.loc[df.index <= split_date], df.loc[df.index > split_date]
+    #create feature matrix of everything up to sales, create labels from sales
+    X_train, X_test, y_train, y_test = df_early.iloc[:,:-1], df_later.iloc[:,:-1], df_early.iloc[:,-1], df_later.iloc[:,-1]
+    
+    
 
     ################################## create features on test data
     
@@ -286,11 +307,9 @@ if __name__ == '__main__':
     from datetime import datetime
     test = pd.read_csv('data/test.csv', low_memory=False)
     store = pd.read_csv('data/store.csv', low_memory=False)
-        
+            
     
-    
-    
-  
+     
     
     #%% 1. Merging store to train data
 
@@ -542,7 +561,7 @@ if __name__ == '__main__':
 
     params1=dictionary
     xg_reg2 = xgb.XGBRegressor(**params1,n_estimators=500)
-    xg_reg2.fit(X_final_test, y_final_test)
+    xg_reg2.fit(X_train, y_train)
     final_test_preds = xg_reg2.predict(X_final_test)
    
    

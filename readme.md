@@ -6,7 +6,9 @@ This mini competition is adapted from the Kaggle Rossman challenge.  Please refr
 
 
 Ensure that you have you have, test.csv,train.csv and store.csv in your data folder. If you do not have params.txt you need to 
-
+#  at test time run
+python data.py --test 1
+```
 
 ```bash
 #install requirements
